@@ -1,11 +1,12 @@
-#include <fcntl.h>
-#include <stddef.h>
 #define _FILE_OFFSET_BITS 64
 #define FUSE_USE_VERSION 26
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <rc.h>
 #include <fuse.h>
@@ -101,6 +102,42 @@ static int etc_init_append(char **buf, const char *append, size_t append_len, si
     return !*buf;
 }
 
+static int rc_service_state_to_string(RC_SERVICE stat, char ** stat_str) {
+    switch (stat) {
+    case RC_SERVICE_STARTED:
+        *stat_str = "RC_SERVICE_STARTED";
+        break;
+    case RC_SERVICE_CRASHED:
+        *stat_str = "RC_SERVICE_CRASHED";
+        break;
+    case RC_SERVICE_FAILED:
+        *stat_str = "RC_SERVICE_FAILED";
+        break;
+    case RC_SERVICE_HOTPLUGGED:
+        *stat_str = "RC_SERVICE_HOTPLUGGED";
+        break;
+    case RC_SERVICE_INACTIVE:
+        *stat_str = "RC_SERVICE_INACTIVE";
+        break;
+    case RC_SERVICE_SCHEDULED:
+        *stat_str = "RC_SERVICE_SCHEDULED";
+        break;
+    case RC_SERVICE_STARTING:
+        *stat_str = "RC_SERVICE_STARTING";
+        break;
+    case RC_SERVICE_STOPPED:
+        *stat_str = "RC_SERVICE_STOPPED";
+        break;
+    case RC_SERVICE_STOPPING:
+        *stat_str = "RC_SERVICE_STOPPING";
+        break;
+    case RC_SERVICE_WASINACTIVE:
+        *stat_str = "RC_SERVICE_WASINACTIVE";
+        break;        
+    }
+    return 0;
+}
+
 int frc_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *finfo) {
     if (strcmp(path, "/") == 0) {
         return -1;
@@ -114,8 +151,9 @@ int frc_read(const char *path, char *buffer, size_t size, off_t offset, struct f
     if (lookup_service_check(FRC_SERVICES, service)){
         return -1;
     }
-/*
-    pid_t status_proc = fork();
+
+    memset(buffer, '\0', size);
+    /* pid_t status_proc = fork();
     int statp[2];
     pipe(statp);
     
@@ -124,25 +162,32 @@ int frc_read(const char *path, char *buffer, size_t size, off_t offset, struct f
         char *service_path = calloc(ETC_INIT_D_LEN + sname_len, sizeof(*service_path));
         
         close(statp[0]);
-        dup2(STDOUT_FILENO, statp[1]);
+        dup2(statp[1], STDOUT_FILENO);
+        printf("\nhi\n");
+        close(statp[1]);
+        exit(1);
         
         if (etc_init_append(&service_path, service, sname_len, ETC_INIT_D_LEN + sname_len)) {
             exit(1);
         }
-        
+
+
         execl(service_path, "status", NULL);
         exit(1);
     } else if (status_proc == -1) {
         return -1;
     }
 
+    wait(NULL);
     close(statp[1]);
-    read(statp[0], buffer, size);
+    read(statp[0], buffer, 10);
     close(statp[0]);
-*/
-    memset(buffer, '\0', size);
+    */
+    
     RC_SERVICE service_stat = rc_service_state(service);
-    strncpy(buffer, (service_stat == RC_SERVICE_STARTED ? "STARTED\n" : "BROKEN\n"), size);
+    char *state = NULL;
+    rc_service_state_to_string(service_stat, &state);
+    snprintf(buffer, size, "%s\n", state);
     return size;
 }
 
