@@ -13,8 +13,12 @@
 
 static RC_STRINGLIST *FRC_SERVICES;
 
-#define ETC_INIT_D "/etc/init.d"
+#define ETC_INIT_D "/etc/init.d/"
 #define ETC_INIT_D_LEN sizeof(ETC_INIT_D)
+
+#define STATUS_CMD "status"
+#define STOP_CMD "stop"
+#define START_CMD "start"
 
 int frc_getattr(const char *path, struct stat *st) {
     st->st_uid = getuid(); 
@@ -102,42 +106,6 @@ static int etc_init_append(char **buf, const char *append, size_t append_len, si
     return !*buf;
 }
 
-static int rc_service_state_to_string(RC_SERVICE stat, char ** stat_str) {
-    switch (stat) {
-    case RC_SERVICE_STARTED:
-        *stat_str = "RC_SERVICE_STARTED";
-        break;
-    case RC_SERVICE_CRASHED:
-        *stat_str = "RC_SERVICE_CRASHED";
-        break;
-    case RC_SERVICE_FAILED:
-        *stat_str = "RC_SERVICE_FAILED";
-        break;
-    case RC_SERVICE_HOTPLUGGED:
-        *stat_str = "RC_SERVICE_HOTPLUGGED";
-        break;
-    case RC_SERVICE_INACTIVE:
-        *stat_str = "RC_SERVICE_INACTIVE";
-        break;
-    case RC_SERVICE_SCHEDULED:
-        *stat_str = "RC_SERVICE_SCHEDULED";
-        break;
-    case RC_SERVICE_STARTING:
-        *stat_str = "RC_SERVICE_STARTING";
-        break;
-    case RC_SERVICE_STOPPED:
-        *stat_str = "RC_SERVICE_STOPPED";
-        break;
-    case RC_SERVICE_STOPPING:
-        *stat_str = "RC_SERVICE_STOPPING";
-        break;
-    case RC_SERVICE_WASINACTIVE:
-        *stat_str = "RC_SERVICE_WASINACTIVE";
-        break;        
-    }
-    return 0;
-}
-
 int frc_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *finfo) {
     if (strcmp(path, "/") == 0) {
         return -1;
@@ -153,41 +121,24 @@ int frc_read(const char *path, char *buffer, size_t size, off_t offset, struct f
     }
 
     memset(buffer, '\0', size);
-    /* pid_t status_proc = fork();
-    int statp[2];
-    pipe(statp);
+    size_t sname_len = strlen(service);
+    size_t spath_len = ETC_INIT_D_LEN + sname_len;
+    char *service_path = calloc(spath_len, sizeof(*service_path));
     
-    if (status_proc == 0) {
-        size_t sname_len = strlen(service);
-        char *service_path = calloc(ETC_INIT_D_LEN + sname_len, sizeof(*service_path));
-        
-        close(statp[0]);
-        dup2(statp[1], STDOUT_FILENO);
-        printf("\nhi\n");
-        close(statp[1]);
-        exit(1);
-        
-        if (etc_init_append(&service_path, service, sname_len, ETC_INIT_D_LEN + sname_len)) {
-            exit(1);
-        }
-
-
-        execl(service_path, "status", NULL);
-        exit(1);
-    } else if (status_proc == -1) {
+    if (etc_init_append(&service_path, service, sname_len, spath_len)) {
         return -1;
     }
 
-    wait(NULL);
-    close(statp[1]);
-    read(statp[0], buffer, 10);
-    close(statp[0]);
-    */
+    FILE *service_f = fopen(service_path, "r");
+    if (!service_f) {
+        return -1;
+    }
     
-    RC_SERVICE service_stat = rc_service_state(service);
-    char *state = NULL;
-    rc_service_state_to_string(service_stat, &state);
-    snprintf(buffer, size, "%s\n", state);
+    if (fread(buffer, sizeof(*service_path), size, service_f) == -1) {
+        return -1;
+    }
+    
+    fclose(service_f);
     return size;
 }
 
